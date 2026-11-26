@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terra Vive — Survie en monde ouvert</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif; }
+  #app, #app canvas { width: 100%; height: 100%; display: block; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+  #crosshair {
+    position: absolute; left: 50%; top: 50%;
+    width: 22px; height: 22px; transform: translate(-50%, -50%);
+    opacity: 0.85;
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: #fff;
+    box-shadow: 0 0 2px rgba(0,0,0,0.9);
+  }
+  #crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+  #crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+
+  #hotbar {
+    position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 5px; padding: 6px;
+    background: rgba(10, 14, 18, 0.55); border-radius: 12px;
+    backdrop-filter: blur(6px);
+    pointer-events: auto;
+  }
+  .slot {
+    width: 52px; height: 52px; border-radius: 8px;
+    background: rgba(255,255,255,0.08);
+    border: 2px solid rgba(255,255,255,0.15);
+    position: relative; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; cursor: pointer; user-select: none;
+    transition: border-color .12s, transform .12s;
+  }
+  .slot.selected { border-color: #ffd76a; transform: translateY(-4px); background: rgba(255,255,255,0.16); }
+  .slot .count {
+    position: absolute; right: 4px; bottom: 2px;
+    font-size: 13px; font-weight: 700; color: #fff;
+    text-shadow: 0 1px 2px #000;
+  }
+  .slot .icon { filter: drop-shadow(0 2px 2px rgba(0,0,0,.6)); }
+
+  #status {
+    position: absolute; bottom: 84px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; gap: 4px; align-items: center;
+    font-size: 17px; text-shadow: 0 1px 3px #000;
+  }
+  #hunger { color: #eee; letter-spacing: 1px; }
+  #health { letter-spacing: 1px; }
+
+  #messages {
+    position: absolute; bottom: 150px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column-reverse; align-items: center; gap: 3px;
+  }
+  .msg {
+    background: rgba(10,14,18,0.6); color: #fff; padding: 4px 14px;
+    border-radius: 16px; font-size: 14px; transition: opacity .5s;
+    text-shadow: 0 1px 2px #000;
+  }
+  .msg.fade { opacity: 0; }
+
+  #vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 140px 60px rgba(200, 10, 10, 0.55);
+    opacity: 0; transition: opacity .18s;
+  }
+  #water-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(rgba(20,60,110,0.5), rgba(10,40,90,0.65));
+    opacity: 0; transition: opacity .3s;
+  }
+  #mode-indicator, #clock {
+    position: absolute; top: 14px; padding: 5px 14px; border-radius: 16px;
+    background: rgba(10,14,18,0.5); color: #fff; font-size: 14px;
+    text-shadow: 0 1px 2px #000;
+  }
+  #mode-indicator { left: 14px; }
+  #clock { right: 14px; }
+
+  #debug {
+    position: absolute; top: 52px; left: 14px; display: none;
+    background: rgba(10,14,18,0.6); color: #9fe08a; padding: 8px 12px;
+    border-radius: 8px; font-family: monospace; font-size: 13px;
+  }
+
+  .overlay {
+    position: fixed; inset: 0; z-index: 20;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(5, 8, 12, 0.75); backdrop-filter: blur(8px);
+  }
+  .panel {
+    background: rgba(18, 24, 32, 0.96); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px; padding: 28px 34px; color: #e8ecf1;
+    max-width: min(920px, 92vw); max-height: 88vh; overflow: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .panel h2 { margin-bottom: 14px; font-weight: 700; }
+  .panel button {
+    pointer-events: auto; cursor: pointer;
+    background: #2f7d46; border: none; color: #fff;
+    padding: 10px 22px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    transition: background .15s;
+  }
+  .panel button:hover { background: #399757; }
+  .panel button.secondary { background: #3a4654; }
+  .panel button.secondary:hover { background: #48586a; }
+  .panel button:disabled { background: #555; cursor: not-allowed; opacity: .6; }
+
+  #loading { display: flex; flex-direction: column; gap: 18px; align-items: center; transition: opacity .6s; }
+  #loading h1 { font-size: 42px; letter-spacing: 2px; }
+  #loading h1 span { color: #7fd08a; }
+  #loading p { color: #9aa7b4; }
+  #load-track { width: 340px; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden; }
+  #load-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #4c9e5f, #7fd08a); border-radius: 5px; transition: width .2s; }
+
+  #pause .panel { text-align: center; }
+  #pause .btns { display: flex; flex-direction: column; gap: 10px; margin: 18px 0; }
+  .controls { text-align: left; font-size: 14px; color: #b8c2cc; line-height: 1.75; columns: 2; column-gap: 40px; }
+  .controls b { color: #fff; }
+
+  #death .panel { text-align: center; background: rgba(60, 10, 10, 0.92); }
+  #death h2 { font-size: 32px; color: #ff9a9a; }
+
+  #inventory {
+    position: fixed; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center; gap: 22px;
+    background: rgba(5, 8, 12, 0.7); backdrop-filter: blur(6px);
+  }
+  #inv-panel, #recipes {
+    background: rgba(18, 24, 32, 0.96); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px; padding: 20px; color: #e8ecf1;
+    max-height: 82vh; overflow: auto; pointer-events: auto;
+  }
+  #inv-panel { width: 460px; }
+  #recipes { width: 380px; }
+  #inv-panel h3, #recipes h3 { margin-bottom: 12px; }
+  #inv-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; }
+  #inv-grid .slot { width: 44px; height: 44px; font-size: 22px; }
+  #inv-grid .slot.hot { border-color: rgba(255, 215, 106, 0.5); }
+  .hint { font-size: 12px; color: #8a95a1; margin-top: 10px; }
+  .recipe { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 14px; }
+  .recipe .out { flex: 1; }
+  .recipe .needs { display: flex; gap: 6px; font-size: 13px; }
+  .recipe .needs .missing { color: #e07070; }
+  .recipe .needs .ok { color: #8fd49a; }
+  .recipe button { padding: 5px 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="health"></div>
+  <div id="hunger"></div>
+  <div id="hotbar"></div>
+  <div id="messages"></div>
+  <div id="vignette"></div>
+  <div id="water-overlay"></div>
+  <div id="mode-indicator"></div>
+  <div id="clock"></div>
+  <div id="debug"></div>
+</div>
+
+<div id="inventory">
+  <div id="inv-panel">
+    <h3>Inventaire</h3>
+    <div id="inv-grid"></div>
+    <div class="hint">Ligne du haut = barre d'action. Clique deux cases pour les échanger. E pour fermer.</div>
+  </div>
+  <div id="recipes"></div>
+</div>
+
+<div class="overlay" id="loading">
+  <h1>TERRA <span>VIVE</span></h1>
+  <div id="load-track"><div id="load-bar"></div></div>
+  <p>Génération du monde…</p>
+</div>
+
+<div class="overlay" id="pause" style="display:none">
+  <div class="panel">
+    <h2>⏸ Pause</h2>
+    <div class="btns">
+      <button id="btn-resume">Reprendre</button>
+      <button id="btn-mode" class="secondary">Basculer Survie / Créatif (M)</button>
+      <button id="btn-save" class="secondary">Sauvegarder</button>
+      <button id="btn-reset" class="secondary">Nouveau monde</button>
+    </div>
+    <div class="controls">
+      <div><b>ZQSD / WASD</b> — se déplacer</div>
+      <div><b>Espace</b> — sauter / nager</div>
+      <div><b>Maj</b> — sprinter</div>
+      <div><b>Clic gauche</b> — miner, attaquer, récolter</div>
+      <div><b>Clic droit</b> — construire, manger, planter</div>
+      <div><b>Molette / 1-9</b> — changer d'objet</div>
+      <div><b>E</b> — inventaire &amp; craft</div>
+      <div><b>F</b> — voler (créatif)</div>
+      <div><b>M</b> — mode survie/créatif</div>
+      <div><b>F3</b> — infos de debug</div>
+      <div><b>Échap</b> — pause</div>
+      <div><b>Nuit</b> — méfie-toi des zombies et loups !</div>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="death" style="display:none">
+  <div class="panel">
+    <h2>💀 Tu es mort !</h2>
+    <p style="margin: 10px 0 20px; color:#d8b0b0;">Le monde est impitoyable… mais tu peux réessayer.</p>
+    <button id="btn-respawn">Réapparaître</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
