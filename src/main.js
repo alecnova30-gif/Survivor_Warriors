@@ -51,11 +51,55 @@ class Game {
   }
 
   async boot() {
+    try {
+      await this.bootInner();
+    } catch (e) {
+      this.fatal(e);
+    }
+  }
+
+  fatal(e) {
+    console.error(e);
+    const panel = document.getElementById('loading');
+    if (!panel) return;
+    const div = document.createElement('pre');
+    div.style.cssText = 'color:#ff9a9a;max-width:80vw;white-space:pre-wrap;font-size:13px;text-align:center;';
+    div.textContent = 'Erreur de démarrage : ' + (e && e.stack || e);
+    panel.appendChild(div);
+  }
+
+  reportError(text) {
+    this.errorLog = this.errorLog || [];
+    const key = String(text).slice(0, 80);
+    if (this.errorLog.includes(key)) return;
+    this.errorLog.push(key);
+    console.warn('[Terra Vive]', text);
+    const panel = document.getElementById('loading');
+    if (panel && panel.style.display !== 'none') {
+      let el = document.getElementById('boot-errors');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'boot-errors';
+        el.style.cssText = 'color:#ff9a9a;font-size:12px;max-width:80vw;white-space:pre-wrap;text-align:center;';
+        panel.appendChild(el);
+      }
+      el.textContent += text + '\n';
+    } else if (this.ui) {
+      this.ui.message('⚠ ' + text);
+    }
+  }
+
+  async bootInner() {
     const saved = this.loadSaveData();
     this.seed = saved ? saved.seed : (Math.random() * 0x7fffffff) | 0;
     initWorld(this.seed);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    } catch (e) {
+      throw new Error('WebGL est indisponible dans ce navigateur : ' + e.message);
+    }
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.shadowMap.enabled = true;
@@ -70,6 +114,7 @@ class Game {
     this.scene.add(this.camera);
 
     this.cm = new ChunkManager(this.scene, this.seed);
+    this.cm.onDiagnostic = (t) => this.reportError(t);
     const detail = makeDetailTexture();
     const terrainMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -139,6 +184,7 @@ class Game {
 
     this.updateLoading();
     this.animate();
+    this.booted = true;
   }
 
   biomeName(x, z) {
@@ -211,6 +257,10 @@ class Game {
     const need = 40;
     const pct = Math.min(100, ready / need * 100);
     bar.style.width = pct + '%';
+    this.loadStart = this.loadStart || performance.now();
+    if (performance.now() - this.loadStart > 15000 && ready < 10) {
+      this.reportError('Chargement anormalement lent (' + ready + '/' + need + ' zones prêtes). Vérifie la console (F12).');
+    }
     const gy = this.cm.groundAt(this.player.pos.x, this.player.pos.z, 80, 100);
     if (ready >= need && gy !== null) {
       el.style.opacity = '0';
@@ -270,4 +320,9 @@ window.addEventListener('beforeunload', () => { window.game && window.game.playi
 
 const game = new Game();
 window.game = game;
+window.addEventListener('error', (e) => window.game && window.game.reportError && window.game.reportError(e.message));
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  window.game && window.game.reportError && window.game.reportError('Promesse rejetée : ' + (r && r.stack || r));
+});
 game.boot();

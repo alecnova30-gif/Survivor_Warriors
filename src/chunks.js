@@ -18,19 +18,63 @@ export class ChunkManager {
     scene.add(this.group);
     this.onChunkLoad = null;
     this.onChunkUnload = null;
+    this.onDiagnostic = null;
     this.nextId = 1;
     this.raycaster = new THREE.Raycaster();
     this.terrainMaterial = null;
     this.meshes = [];
 
-    const n = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 1));
     this.workers = [];
-    for (let i = 0; i < n; i++) {
-      const w = new Worker(WORKER_URL, { type: 'module' });
-      w.postMessage({ type: 'init', seed });
-      w.onmessage = (e) => this.onWorkerMsg(e.data);
-      this.workers.push(w);
+    this.fallback = false;
+    this.fallbackGen = null;
+    try {
+      const n = Math.min(4, Math.max(2, (navigator.hardwareConcurrency || 4) - 1));
+      for (let i = 0; i < n; i++) {
+        const w = new Worker(WORKER_URL, { type: 'module' });
+        w.postMessage({ type: 'init', seed });
+        w.onmessage = (e) => {
+          const msg = e.data;
+          if (msg.type === 'init') return;
+          if (msg.error) {
+            this.diag('Erreur worker: ' + msg.error);
+            return;
+          }
+          const k = this.inFlight.get(msg.id);
+          if (!k) return;
+          this.inFlight.delete(msg.id);
+          this.applyChunkResult(k, msg);
+        };
+        w.onerror = (e) => {
+          this.diag('Worker indisponible (' + (e.message || 'erreur de chargement') + '), basculement sans workers');
+          this.enableFallback();
+        };
+        this.workers.push(w);
+      }
+    } catch (e) {
+      this.diag('Workers non supportés, génération sur le thread principal');
+      this.enableFallback();
     }
+  }
+
+  diag(text) {
+    if (this.onDiagnostic) this.onDiagnostic(text);
+    console.warn('[Terra Vive]', text);
+  }
+
+  enableFallback() {
+    if (this.fallback) return;
+    this.fallback = true;
+    for (const w of this.workers) { w.onmessage = null; w.onerror = null; w.terminate(); }
+    this.workers = [];
+    this.inFlight.clear();
+    import('./chunkgen.js').then((m) => {
+      this.fallbackGen = m;
+      this.fallbackGen.ensureWorld(this.seed);
+      for (const [, c] of this.chunks) {
+        if (c.state === 'pending' || c.mesh || c.state === 'ready' || c.state === 'empty') this.enqueue(c.key);
+      }
+      this.pump();
+    }).catch((e) => this.diag('Impossible de charger le générateur: ' + e.message));
   }
 
   key(cx, cy, cz) { return cx + ',' + cy + ',' + cz; }
@@ -86,6 +130,29 @@ export class ChunkManager {
   }
 
   pump() {
+    if (this.fallback) {
+      if (!this.fallbackGen) return;
+      while (this.queue.length > 0) {
+        const k = this.queue.shift();
+        this.queued.delete(k);
+        const c = this.chunks.get(k);
+        if (!c) continue;
+        let msg;
+        try {
+          msg = this.fallbackGen.buildChunk({ cx: c.cx, cy: c.cy, cz: c.cz, spheres: this.edits.get(k) || [] });
+        } catch (e) {
+          this.diag('Erreur de génération: ' + (e && e.message));
+          continue;
+        }
+        this.applyChunkResult(k, msg);
+        if (msg.positions) {
+          setTimeout(() => this.pump(), 16);
+          return;
+        }
+      }
+      return;
+    }
+
     while (this.queue.length > 0 && this.inFlight.size < this.workers.length * 2) {
       const k = this.queue.shift();
       this.queued.delete(k);
@@ -98,10 +165,7 @@ export class ChunkManager {
     }
   }
 
-  onWorkerMsg(msg) {
-    const k = this.inFlight.get(msg.id);
-    if (!k) return;
-    this.inFlight.delete(msg.id);
+  applyChunkResult(k, msg) {
     const c = this.chunks.get(k);
     if (!c) return;
 
@@ -113,7 +177,7 @@ export class ChunkManager {
       c.mesh = null;
     }
 
-    if (msg.empty) {
+    if (msg.empty || !msg.positions) {
       c.state = 'empty';
     } else {
       const geo = new THREE.BufferGeometry();

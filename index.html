@@ -217,6 +217,29 @@
   </div>
 </div>
 
+<script>
+(function () {
+  var shown = false;
+  function showErr(text) {
+    if (shown) return;
+    shown = true;
+    var p = document.querySelector('#loading p');
+    if (!p) return;
+    var d = document.createElement('div');
+    d.style.cssText = 'color:#ff9a9a;font-size:13px;max-width:80vw;white-space:pre-wrap;text-align:center;';
+    d.textContent = text;
+    p.parentNode.insertBefore(d, p.nextSibling);
+  }
+  window.addEventListener('error', function (e) {
+    if (!window.game) showErr('Erreur de chargement : ' + (e.message || 'ressource bloquée') + '\nVérifie ta connexion (le jeu charge Three.js depuis un CDN) et rafraîchis avec Ctrl+F5.');
+  });
+  setTimeout(function () {
+    if (!window.game || !window.game.booted) {
+      showErr('Le jeu ne démarre pas. Causes possibles : connexion bloquant le CDN, navigateur sans WebGL, ou erreur JavaScript.\nAppuie sur F12 pour voir la console, puis rafraîchis avec Ctrl+F5.');
+    }
+  }, 14000);
+})();
+</script>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
 </script>
