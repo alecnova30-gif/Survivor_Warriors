@@ -11,18 +11,16 @@ normales lisses, ombres douces, cycle jour/nuit, ciel dynamique et eau animée.
 
 ## Lancer le jeu
 
-Les modules ES nécessitent un serveur HTTP (pas d'ouverture directe du fichier) :
+Le jeu entier tient dans **un seul fichier** : `index.html` (tous les modules et le
+code des workers sont embarqués ; seul Three.js est chargé depuis un CDN).
+
+En ligne : <https://alecnova30-gif.github.io/Survivor_Warriors/>
+
+En local :
 
 ```bash
-cd game
 python3 -m http.server 8000
 # puis ouvrir http://localhost:8000
-```
-
-ou :
-
-```bash
-npx serve game
 ```
 
 ## Biomes
