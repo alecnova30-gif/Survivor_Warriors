@@ -186,15 +186,15 @@
 
 <div class="overlay" id="pause" style="display:none">
   <div class="panel">
-    <h2>⏸ Pause</h2>
+    <h2 id="pause-title">⏸ Pause</h2>
     <div class="btns">
-      <button id="btn-resume">Reprendre</button>
+      <button id="btn-resume">▶ Jouer (clique ici)</button>
       <button id="btn-mode" class="secondary">Basculer Survie / Créatif (M)</button>
       <button id="btn-save" class="secondary">Sauvegarder</button>
       <button id="btn-reset" class="secondary">Nouveau monde</button>
     </div>
     <div class="controls">
-      <div><b>ZQSD / WASD</b> — se déplacer</div>
+      <div><b>ZQSD / WASD / Flèches</b> — se déplacer</div>
       <div><b>Espace</b> — sauter / nager</div>
       <div><b>Maj</b> — sprinter</div>
       <div><b>Clic gauche</b> — miner, attaquer, récolter</div>
@@ -2898,6 +2898,7 @@ class Player {
   bindEvents() {
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Tab') e.preventDefault();
+      if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
       this.keys[e.code] = true;
       if (e.code === 'KeyF') this.toggleFly();
       if (e.code.startsWith('Digit')) {
@@ -2959,10 +2960,10 @@ class Player {
     const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
     let mx = 0, mz = 0;
-    if (this.keys['KeyW']) { mx += fwd.x; mz += fwd.z; }
-    if (this.keys['KeyS']) { mx -= fwd.x; mz -= fwd.z; }
-    if (this.keys['KeyD']) { mx += right.x; mz += right.z; }
-    if (this.keys['KeyA']) { mx -= right.x; mz -= right.z; }
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) { mx += fwd.x; mz += fwd.z; }
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) { mx -= fwd.x; mz -= fwd.z; }
+    if (this.keys['KeyD'] || this.keys['ArrowRight']) { mx += right.x; mz += right.z; }
+    if (this.keys['KeyA'] || this.keys['ArrowLeft']) { mx -= right.x; mz -= right.z; }
     const ml = Math.hypot(mx, mz);
     if (ml > 0) { mx /= ml; mz /= ml; }
 
@@ -3814,6 +3815,7 @@ class Game {
     this.chunkTimer = 0;
     this.growlTimer = 8;
     this.autosaveT = 0;
+    this.started = false;
   }
 
   async boot() {
@@ -3963,14 +3965,26 @@ class Game {
     this.renderer.domElement.requestPointerLock();
   }
 
+  setPauseTitle(text) {
+    const t = document.getElementById('pause-title');
+    if (t) t.textContent = text;
+  }
+
   resume() {
     this.paused = false;
+    this.started = true;
     document.getElementById('pause').style.display = 'none';
+    this.setPauseTitle('⏸ Pause');
+    if (this.firstPlay !== false) {
+      this.firstPlay = false;
+      setTimeout(() => this.ui && this.ui.message('ZQSD ou flèches : bouger • Souris : regarder • Clic gauche : miner • E : inventaire'), 400);
+    }
     this.requestLock();
   }
 
   pause() {
     this.paused = true;
+    this.setPauseTitle(this.started ? '⏸ Pause' : '🎮 Prêt à jouer ? Clique sur le bouton vert');
     document.getElementById('pause').style.display = 'flex';
     this.save(false);
   }
@@ -4035,7 +4049,7 @@ class Game {
       if (!this.loadSaveData()) {
         this.player.pos.y = gy + 1.5;
       }
-      this.ui.message('Bienvenue ! Clique pour jouer. E : inventaire, M : mode');
+      this.pause();
       return;
     }
     requestAnimationFrame(() => this.updateLoading());
