@@ -3478,12 +3478,17 @@ class UI {
     }
     this.hotbarSlots = [...this.el.hotbar.children];
 
-    document.getElementById('btn-resume').addEventListener('click', () => this.game.resume());
-    document.getElementById('btn-mode').addEventListener('click', () => this.game.toggleMode());
-    document.getElementById('btn-save').addEventListener('click', () => this.game.save(true));
-    document.getElementById('btn-reset').addEventListener('click', () => this.game.resetWorld());
-    document.getElementById('btn-respawn').addEventListener('click', () => this.game.respawn());
-    document.getElementById('btn-close-inv').addEventListener('click', () => this.toggleInventory(false));
+    const bind = (id, fn) => {
+      const b = document.getElementById(id);
+      if (!b) throw new Error('Élément HTML manquant : ' + id + ' (essaie Ctrl+F5 pour vider le cache)');
+      b.addEventListener('click', fn);
+    };
+    bind('btn-resume', () => this.game.resume());
+    bind('btn-mode', () => this.game.toggleMode());
+    bind('btn-save', () => this.game.save(true));
+    bind('btn-reset', () => this.game.resetWorld());
+    bind('btn-respawn', () => this.game.respawn());
+    bind('btn-close-inv', () => this.toggleInventory(false));
 
     this.refreshHotbar();
     this.msgT = [];
@@ -3825,7 +3830,7 @@ class Game {
     if (!panel) return;
     const div = document.createElement('pre');
     div.style.cssText = 'color:#ff9a9a;max-width:80vw;white-space:pre-wrap;font-size:13px;text-align:center;';
-    div.textContent = 'Erreur de démarrage : ' + (e && e.stack || e);
+    div.textContent = 'Erreur de démarrage : ' + (e && e.stack || e) + '\n\n💡 Si l\'erreur persiste après ce message, appuie sur Ctrl+F5 (ou Ctrl+Shift+R) pour forcer le rechargement.';
     panel.appendChild(div);
   }
 
